@@ -1,4 +1,4 @@
-# audoplayer_mobile
+# audioplayer_mobile
 
 飞鱼音乐移动端 — Capacitor + React + TypeScript + Vite + zustand。
 
