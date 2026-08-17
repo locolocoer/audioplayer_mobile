@@ -47,16 +47,14 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace > gradle.log 2>&1
-          code=$?
-          if [ $code -ne 0 ]; then
+          if ! ./gradlew assembleDebug --no-daemon --stacktrace > gradle.log 2>&1; then
             if [ -s gradle.log ]; then
-              err=$(tail -c 2500 gradle.log | tr '\n' ' ' | tr -d '\r')
+              err=$(tail -c 3000 gradle.log | tr '\n' ' ' | tr -d '\r')
               echo "::error::gradle-tail:${err:0:1800}"
             else
               echo "::error::gradle-log-is-empty"
             fi
-            exit $code
+            exit 1
           fi
 
       - name: Upload APK
