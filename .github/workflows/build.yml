@@ -48,12 +48,10 @@ jobs:
         run: |
           chmod +x gradlew
           if ! ./gradlew assembleDebug --no-daemon --stacktrace > gradle.log 2>&1; then
-            if [ -s gradle.log ]; then
-              err=$(tail -c 3000 gradle.log | tr '\n' ' ' | tr -d '\r')
-              echo "::error::gradle-tail:${err:0:1800}"
-            else
-              echo "::error::gradle-log-is-empty"
-            fi
+            ww=$(grep -A 20 'What went wrong' gradle.log | head -25 | tr '\n' ' ' | tr -d '\r')
+            echo "::error::WHAT-WENT-WRONG:${ww:0:1600}"
+            err=$(grep -E 'FAILED|error:|Caused by|Exception|Could not|not found' gradle.log | head -15 | tr '\n' ' ' | tr -d '\r')
+            echo "::error::ERROR-LINES:${err:0:1600}"
             exit 1
           fi
 
