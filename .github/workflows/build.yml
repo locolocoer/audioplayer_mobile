@@ -50,9 +50,12 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace > gradle.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
-            echo "::error::java=$(java -version 2>&1 | tr '\n' ' ')"
-            err=$(grep -A 8 'What went wrong' gradle.log | tr '\n' '|' | tr -d '\r')
-            echo "::error::gradle-error=$err"
+            if [ -s gradle.log ]; then
+              err=$(tail -c 2500 gradle.log | tr '\n' ' ' | tr -d '\r')
+              echo "::error::gradle-tail:${err:0:1800}"
+            else
+              echo "::error::gradle-log-is-empty"
+            fi
             exit $code
           fi
 
