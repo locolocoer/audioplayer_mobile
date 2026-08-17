@@ -28,6 +28,12 @@ jobs:
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install dependencies
         run: npm ci
 
@@ -44,7 +50,9 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace > gradle.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
-            tail -n 50 gradle.log | sed 's/^/::error::/'
+            echo "::error::java=$(java -version 2>&1 | tr '\n' ' ')"
+            err=$(grep -A 8 'What went wrong' gradle.log | tr '\n' '|' | tr -d '\r')
+            echo "::error::gradle-error=$err"
             exit $code
           fi
 
