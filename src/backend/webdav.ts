@@ -5,8 +5,18 @@ const clients = new Map<string, WebDAVClient>()
 
 function buildUrl(config: WebDAVConfig): string {
   if (config.sourceType === 'local') return config.url
-  const hasPort = /:\d+(\/|$)/.test(config.url)
-  return hasPort ? config.url : `${config.url}:${config.port}`
+  let raw = config.url.trim()
+  // 允许用户直接填「IP」或「域名」，自动补 http://
+  if (!/^https?:\/\//i.test(raw)) raw = 'http://' + raw
+  // 拆出 scheme://host[:port][/path]
+  const m = raw.match(/^(https?:\/\/[^/:]+)(?::(\d+))?(\/.*)?$/)
+  if (!m) return raw
+  // 已显式带端口则原样使用
+  if (m[2]) return raw
+  // https 默认 443（fnConnect 公网地址）；http 才拼用户填的端口（飞牛 WebDAV 默认 5006）
+  const isHttps = m[1].toLowerCase().startsWith('https://')
+  const port = isHttps ? 443 : config.port || 80
+  return `${m[1]}:${port}${m[3] || ''}`
 }
 
 export function getClient(config: WebDAVConfig): WebDAVClient {

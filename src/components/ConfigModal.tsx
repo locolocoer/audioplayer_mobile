@@ -29,6 +29,10 @@ export default function ConfigModal({ initial, onClose, onSave }: Props): JSX.El
 
   const patch = (p: Partial<WebDAVConfig>): void => setForm((f) => ({ ...f, ...p }))
 
+  const applyFnOSPreset = (): void => {
+    setForm((f) => ({ ...f, name: f.name || t('settings.fnosName'), port: 5006 }))
+  }
+
   const handleTest = async (): Promise<void> => {
     setTesting(true)
     setTestResult(null)
@@ -46,6 +50,9 @@ export default function ConfigModal({ initial, onClose, onSave }: Props): JSX.El
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{t('settings.editServer')}</h3>
+        <div className="preset-row">
+          <button type="button" className="btn btn-sm" onClick={applyFnOSPreset}>{t('settings.fnosPreset')}</button>
+        </div>
         <div className="form-group">
           <label>{t('settings.name')}</label>
           <input type="text" value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder={t('settings.serverNamePlaceholder')} />
@@ -53,6 +60,7 @@ export default function ConfigModal({ initial, onClose, onSave }: Props): JSX.El
         <div className="form-group">
           <label>{t('settings.address')}</label>
           <input type="text" value={form.url} onChange={(e) => patch({ url: e.target.value })} placeholder="https://dav.example.com/dav" />
+          <p className="form-hint">{t('settings.addressHint')}</p>
         </div>
         <div className="form-group">
           <label>{t('settings.port')}</label>

@@ -8,7 +8,8 @@
   --border: rgba(255, 255, 255, 0.08);
   --tab-bar-h: 56px;
   --mini-player-h: 60px;
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 * {
@@ -36,6 +37,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  padding-top: var(--safe-top);
 }
 
 .app-content {
@@ -422,6 +424,19 @@ body {
   background: var(--surface-2);
   color: var(--text);
   font-size: 15px;
+}
+
+.form-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.preset-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .modal-actions {
