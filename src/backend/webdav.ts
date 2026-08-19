@@ -1,7 +1,22 @@
-import { createClient, type WebDAVClient } from 'webdav'
+import { registerPlugin } from '@capacitor/core'
 import type { WebDAVConfig, MusicFile } from '../types'
 
-const clients = new Map<string, WebDAVClient>()
+interface WebDavNativeResult {
+  status: number
+  data: string
+}
+
+interface WebDavNativePlugin {
+  request(options: {
+    url: string
+    method: string
+    body?: string
+    binary?: boolean
+    headers?: Record<string, string>
+  }): Promise<WebDavNativeResult>
+}
+
+const WebDav = registerPlugin<WebDavNativePlugin>('WebDav')
 
 function buildUrl(config: WebDAVConfig): string {
   if (config.sourceType === 'local') return config.url
@@ -19,22 +34,51 @@ function buildUrl(config: WebDAVConfig): string {
   return `${m[1]}:${port}${m[3] || ''}`
 }
 
-export function getClient(config: WebDAVConfig): WebDAVClient {
-  const key = config.id || buildUrl(config)
-  const cached = clients.get(key)
-  if (cached) return cached
-  const client = createClient(buildUrl(config), {
-    username: config.username,
-    password: config.password
+function rootUrl(config: WebDAVConfig): string {
+  return buildUrl(config).replace(/\/+$/, '')
+}
+
+function authHeader(config: WebDAVConfig): string {
+  const cred = `${config.username}:${config.password}`
+  return 'Basic ' + btoa(unescape(encodeURIComponent(cred)))
+}
+
+function joinUrl(base: string, path: string): string {
+  if (!path || path === '/') return base
+  const encoded = path
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')
+  return base + (encoded.startsWith('/') ? encoded : '/' + encoded)
+}
+
+const PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop>
+    <d:resourcetype/>
+    <d:getcontentlength/>
+    <d:getlastmodified/>
+  </d:prop>
+</d:propfind>`
+
+async function propfind(config: WebDAVConfig, depth: '0' | '1' | 'infinity'): Promise<{ status: number; xml: string }> {
+  const res = await WebDav.request({
+    url: rootUrl(config),
+    method: 'PROPFIND',
+    body: PROPFIND_BODY,
+    headers: {
+      Authorization: authHeader(config),
+      Depth: depth,
+      'Content-Type': 'application/xml; charset=utf-8'
+    }
   })
-  clients.set(key, client)
-  return client
+  return { status: res.status, xml: res.data }
 }
 
 export async function testWebDAV(config: WebDAVConfig): Promise<{ ok: boolean; error?: string }> {
   try {
-    await getClient(config).getDirectoryContents('/')
-    return { ok: true }
+    const { status } = await propfind(config, '0')
+    return { ok: status >= 200 && status < 400 }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
@@ -48,22 +92,44 @@ function hashStr(s: string): number {
   return Math.abs(h)
 }
 
+function decodeHref(href: string): string {
+  try {
+    return decodeURIComponent(href)
+  } catch {
+    return href
+  }
+}
+
 export async function scanWebDAV(config: WebDAVConfig): Promise<MusicFile[]> {
-  const client = getClient(config)
-  const entries = await client.getDirectoryContents('/', { deep: true })
+  const { status, xml } = await propfind(config, 'infinity')
+  if (status >= 400) {
+    throw new Error('WebDAV PROPFIND failed with HTTP ' + status)
+  }
   const files: MusicFile[] = []
   const now = new Date().toISOString()
-  for (const entry of entries) {
-    if (entry.type === 'directory') continue
-    const name = entry.basename || ''
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  const responses = doc.getElementsByTagNameNS('*', 'response')
+  for (let i = 0; i < responses.length; i++) {
+    const resp = responses[i]
+    const hrefEl = resp.getElementsByTagNameNS('*', 'href')[0]
+    if (!hrefEl) continue
+    const path = decodeHref((hrefEl.textContent || '').trim())
+    const rtEl = resp.getElementsByTagNameNS('*', 'resourcetype')[0]
+    const isDir = !!rtEl && rtEl.getElementsByTagNameNS('*', 'collection').length > 0
+    if (isDir) continue
+    const lenEl = resp.getElementsByTagNameNS('*', 'getcontentlength')[0]
+    const size = parseInt(lenEl?.textContent || '0', 10) || 0
+    const modEl = resp.getElementsByTagNameNS('*', 'getlastmodified')[0]
+    const mtime = (modEl?.textContent || '').trim()
+    const name = path.split('/').filter(Boolean).pop() || path
     const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
     if (!AUDIO_EXT.has(ext)) continue
     files.push({
-      id: hashStr(config.id + ':' + entry.filename),
-      path: entry.filename,
+      id: hashStr(config.id + ':' + path),
+      path,
       filename: name,
-      size: entry.size || 0,
-      mtime: entry.lastmod || '',
+      size,
+      mtime,
       title: name.replace(/\.[^.]+$/, ''),
       artist: '',
       album: '',
@@ -77,14 +143,19 @@ export async function scanWebDAV(config: WebDAVConfig): Promise<MusicFile[]> {
 }
 
 export async function fetchAudioBlob(config: WebDAVConfig, path: string): Promise<Blob> {
-  const client = getClient(config)
-  const data = (await client.getFileContents(path, { format: 'binary' })) as unknown
-  if (data instanceof Blob) return data
-  if (data instanceof ArrayBuffer) return new Blob([data])
-  if (typeof data === 'string') return new Blob([data], { type: 'application/octet-stream' })
-  if (ArrayBuffer.isView(data)) {
-    const arr = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-    return new Blob([arr.slice().buffer])
+  const res = await WebDav.request({
+    url: joinUrl(rootUrl(config), path),
+    method: 'GET',
+    binary: true,
+    headers: {
+      Authorization: authHeader(config)
+    }
+  })
+  if (res.status >= 400) {
+    throw new Error('WebDAV GET failed with HTTP ' + res.status)
   }
-  throw new Error('unsupported audio response')
+  const binary = atob(res.data)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes])
 }

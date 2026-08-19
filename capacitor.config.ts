@@ -18,10 +18,6 @@ const config: CapacitorConfig = {
       // 深色背景上用浅色状态栏图标；注入 --safe-area-inset-* CSS 变量修复状态栏重叠
       style: 'DARK',
       insetsHandling: 'css'
-    },
-    CapacitorHttp: {
-      // 用原生 HTTP 替换 window.fetch，绕过 WebView 的 CORS 限制（NAS 的 WebDAV 不返回 CORS 头）
-      enabled: true
     }
   }
 }
